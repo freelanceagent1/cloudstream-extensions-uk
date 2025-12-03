@@ -3,6 +3,6 @@
     "name": "HdRezka",
     "description": "HDRezka source with movies, series, anime, cartoons, shows, and Korean dramas.",
     "manifestVersion": 1,
-    "pluginLists": "https://raw.githubusercontent.com/freelanceagent1/mytestrepo/main/builds/HdRezkaProvider.cs3"
+    "pluginLists": "https://raw.githubusercontent.com/freelanceagent1/cloudstream-extensions-uk/main/builds/HdRezkaProvider.cs3"
   }
 ]
