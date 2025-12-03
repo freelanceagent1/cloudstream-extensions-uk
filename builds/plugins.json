@@ -18,7 +18,7 @@
       "OVA",
       "AsianDrama"
     ],
-    "version": 1,
+    "version": 2,
     "internalName": "HdRezkaProvider",
     "description": "HDRezka source with movies, series, anime, cartoons, shows, and Korean dramas.",
     "url": "https://raw.githubusercontent.com/freelanceagent1/cloudstream-extensions-uk/refs/heads/master/builds/HdRezkaProvider.cs3",
