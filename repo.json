@@ -3,6 +3,6 @@
   "description": "Cloudstream Ukraine Plugin Repository",
   "manifestVersion": 1,
   "pluginLists": [
-    "https://raw.githubusercontent.com/freelanceagent1/cloudstream-extensions-uk/master/builds/plugins.json"
+    "https://raw.githubusercontent.com/freelanceagent1/cloudstream-extensions-uk/refs/heads/master/builds/plugins.json"
   ]
 }
