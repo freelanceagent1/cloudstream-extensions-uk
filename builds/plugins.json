@@ -1,9 +1,27 @@
 [
   {
-    "name": "HdRezka",
-    "description": "HDRezka source with movies, series, anime, cartoons, shows, and Korean dramas.",
+    "iconUrl": "https://www.google.com/s2/favicons?domain=hdrezka.ag&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/freelanceagent1/cloudstream-extensions-uk",
+    "fileSize": 17292,
+    "status": 1,
     "language": "en",
+    "authors": [
+      "freelanceagent1"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries",
+      "Cartoon",
+      "Anime",
+      "AnimeMovie",
+      "OVA",
+      "AsianDrama"
+    ],
     "version": 1,
-    "url": "https://raw.githubusercontent.com/freelanceagent1/cloudstream-extensions-uk/master/builds/HdRezkaProvider.cs3"
+    "internalName": "HdRezkaProvider",
+    "description": "HDRezka source with movies, series, anime, cartoons, shows, and Korean dramas.",
+    "url": "https://raw.githubusercontent.com/freelanceagent1/cloudstream-extensions-uk/master/builds/HdRezkaProvider.cs3",
+    "name": "HdRezkaProvider"
   }
 ]
