@@ -71,6 +71,15 @@ class HdRezkaProvider : MainAPI() {
     @Volatile
     private var appliedRemoteMainUrl = false
 
+    private val fallbackBases = listOf(
+        "https://rezka.ag",
+        "https://hdrezka.ag",
+        "https://hdrezka.ac",
+        "https://rezka.ac",
+        "https://rezka.cm",
+        "https://rezka.tv"
+    )
+
     private fun normalizeUrl(url: String?): String? {
         if (url.isNullOrBlank()) return null
         val trimmed = url.trim()
@@ -214,19 +223,27 @@ class HdRezkaProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         ensureSettingsApplied() // ensure mainUrl mirrors applied before constructing URL
-        val base = mainUrl.trimEnd('/')
-        val url = if (request.data.endsWith("/")) "$base${request.data}page/$page/" else "$base${request.data}?page=$page"
-        val doc = app.get(url, headers = baseHeaders(referer = base, origin = base)).document
-        val items = doc.select(".b-content__inline_item").mapNotNull { it.toSearchResult() }
-        return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
+        val bases = listOf(mainUrl.trimEnd('/')) + fallbackBases
+        for (base in bases.distinct()) {
+            val url = if (request.data.endsWith("/")) "$base${request.data}page/$page/" else "$base${request.data}?page=$page"
+            val doc = runCatching { app.get(url, headers = baseHeaders(referer = base, origin = base)).document }.getOrNull()
+            val items = doc?.select(".b-content__inline_item")?.mapNotNull { it.toSearchResult() } ?: emptyList()
+            if (items.isNotEmpty()) return newHomePageResponse(request.name, items, hasNext = true)
+        }
+        // Fall back to empty list if everything failed
+        return newHomePageResponse(request.name, emptyList(), hasNext = false)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         ensureSettingsApplied()
-        val base = mainUrl.trimEnd('/')
-        val url = "$base/search/?do=search&subaction=search&q=${query.trim()}"
-        val doc = app.get(url, headers = baseHeaders(referer = base, origin = base)).document
-        return doc.select(".b-content__inline_item").mapNotNull { it.toSearchResult() }
+        val bases = listOf(mainUrl.trimEnd('/')) + fallbackBases
+        for (base in bases.distinct()) {
+            val url = "$base/search/?do=search&subaction=search&q=${query.trim()}"
+            val doc = runCatching { app.get(url, headers = baseHeaders(referer = base, origin = base)).document }.getOrNull()
+            val results = doc?.select(".b-content__inline_item")?.mapNotNull { it.toSearchResult() } ?: emptyList()
+            if (results.isNotEmpty()) return results
+        }
+        return emptyList()
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
