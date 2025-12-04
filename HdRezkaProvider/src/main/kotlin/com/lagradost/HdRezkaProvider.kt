@@ -72,13 +72,13 @@ class HdRezkaProvider : MainAPI() {
     private var appliedRemoteMainUrl = false
 
     private val fallbackBases = listOf(
+        "https://hdrezka-home.tv",
         "https://rezka.ag",
         "https://hdrezka.ag",
-        "https://hdrezka.ac",
         "https://rezka.ac",
-        "https://rezka.cm",
         "https://rezka.tv",
-        "https://hdrezka-home.tv"
+        "https://hdrezka.ac",
+        "https://rezka.cm",
     )
 
     private fun normalizeUrl(url: String?): String? {
