@@ -68,6 +68,9 @@ class HdRezkaProvider : MainAPI() {
     @Volatile
     private var cachedSettings: OnlineSettings? = null
 
+    @Volatile
+    private var appliedRemoteMainUrl = false
+
     override val mainPage = mainPageOf(
         "/films/" to "Movies",
         "/series/" to "Series",
@@ -93,9 +96,21 @@ class HdRezkaProvider : MainAPI() {
         return trashCodes
     }
 
+    private fun applyRemoteMainUrl(dto: RemoteSettingsDto?) {
+        if (appliedRemoteMainUrl) return
+        val mirror = listOfNotNull(dto?.mirror, dto?.mirror2)
+            .firstOrNull { !it.isNullOrBlank() }
+            ?.trimEnd('/')
+        if (!mirror.isNullOrBlank() && mirror != mainUrl) {
+            mainUrl = mirror
+        }
+        appliedRemoteMainUrl = true
+    }
+
     private suspend fun getSettings(): OnlineSettings {
         cachedSettings?.let { return it }
         val dto = runCatching { parseJson<RemoteSettingsDto>(app.get(remoteSettingsUrl).text) }.getOrNull()
+        applyRemoteMainUrl(dto)
 
         val uaTemplate = dto?.default_useragent
         val resolvedUa = runCatching {
@@ -155,12 +170,22 @@ class HdRezkaProvider : MainAPI() {
         }.distinct()
     }
 
+    private fun Element.posterFromImg(): String? {
+        val imgEl = selectFirst("img") ?: return null
+        val candidates = listOf("data-original", "data-src", "data-lazy", "data-preview", "src", "data-srcset")
+        for (attr in candidates) {
+            val raw = imgEl.attr(attr)
+            val value = raw.substringBefore(" ").substringBefore(",").trim()
+            if (value.isNotBlank()) return fixUrlNull(value)
+        }
+        return null
+    }
+
     private fun Element.toSearchResult(): SearchResponse? {
         val link = selectFirst(".b-content__inline_item-link a") ?: return null
         val href = fixUrl(link.attr("href"))
         val title = link.text().trim()
-        val img = selectFirst("img")?.attr("data-original")
-            ?: selectFirst("img")?.attr("src")
+        val img = posterFromImg()
         val type = when {
             href.contains("/anime/") -> TvType.Anime
             href.contains("/cartoons/") -> TvType.Cartoon
@@ -174,23 +199,28 @@ class HdRezkaProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = if (request.data.endsWith("/")) "${mainUrl}${request.data}page/$page/" else "${mainUrl}${request.data}?page=$page"
-        val doc = app.get(url, headers = baseHeaders()).document
+        val doc = app.get(url, headers = baseHeaders(referer = mainUrl, origin = mainUrl)).document
         val items = doc.select(".b-content__inline_item").mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/search/?do=search&subaction=search&q=${query.trim()}"
-        val doc = app.get(url, headers = baseHeaders()).document
+        val doc = app.get(url, headers = baseHeaders(referer = mainUrl, origin = mainUrl)).document
         return doc.select(".b-content__inline_item").mapNotNull { it.toSearchResult() }
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun load(url: String): LoadResponse {
-        val doc = app.get(url, headers = baseHeaders()).document
+        val doc = app.get(url, headers = baseHeaders(referer = url, origin = mainUrl)).document
         val title = doc.selectFirst("h1")?.text()?.trim().orEmpty()
         val poster = doc.selectFirst("meta[property=og:image]")?.attr("content")
+            ?: doc.selectFirst(".b-post__infopic img")?.let { img ->
+                val raw = listOf("data-original", "data-src", "data-lazy", "data-preview", "src", "data-srcset")
+                    .firstNotNullOfOrNull { attr -> img.attr(attr).substringBefore(" ").substringBefore(",").trim().takeIf { it.isNotBlank() } }
+                raw
+            }
         val description = doc.selectFirst("meta[name=description]")?.attr("content")
         val year = doc.selectFirst("meta[property=og:updated_time]")?.attr("content")?.take(4)?.toIntOrNull()
         val type = when {
