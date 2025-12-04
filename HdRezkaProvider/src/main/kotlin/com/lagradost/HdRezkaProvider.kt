@@ -71,6 +71,16 @@ class HdRezkaProvider : MainAPI() {
     @Volatile
     private var appliedRemoteMainUrl = false
 
+    private fun normalizeUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        val trimmed = url.trim()
+        return when {
+            trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed.trimEnd('/')
+            trimmed.startsWith("//") -> "https:${trimmed}".trimEnd('/')
+            else -> "https://$trimmed".trimEnd('/')
+        }
+    }
+
     private suspend fun ensureSettingsApplied(): OnlineSettings {
         // Fetch settings and update mainUrl before building request URLs.
         return getSettings()
@@ -105,9 +115,9 @@ class HdRezkaProvider : MainAPI() {
         if (appliedRemoteMainUrl) return
         val mirror = listOfNotNull(dto?.mirror, dto?.mirror2)
             .firstOrNull { !it.isNullOrBlank() }
-            ?.trimEnd('/')
-        if (!mirror.isNullOrBlank() && mirror != mainUrl) {
-            mainUrl = mirror
+        val normalized = normalizeUrl(mirror)
+        if (!normalized.isNullOrBlank() && normalized != mainUrl) {
+            mainUrl = normalized
         }
         appliedRemoteMainUrl = true
     }
