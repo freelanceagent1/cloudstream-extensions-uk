@@ -431,33 +431,45 @@ class HdRezkaProvider : MainAPI() {
         val refererUrl = parts.getOrNull(5) ?: mainUrl
 
         val action = if (isMovie) "get_movie" else "get_stream"
-        val base = runCatching {
+        val preferBase = runCatching {
             val uri = URI(refererUrl)
             "${uri.scheme}://${uri.host}"
-        }.getOrNull() ?: mainUrl
-        val endpoint = if (isMovie) "$base/ajax/get_cdn_movies/" else "$base/ajax/get_cdn_series/"
-        val bodyBuilder = FormBody.Builder()
-            .add("id", itemId.toString())
-            .add("translator_id", translatorId.toString())
-            .add("is_camrip", "0")
-            .add("is_ads", "0")
-            .add("is_director", "0")
-            .add("favs", "0")
-            .add("action", action)
-        if (!isMovie) {
-            bodyBuilder.add("season", seasonId.toString())
-            bodyBuilder.add("episode", episodeId.toString())
+        }.getOrNull()?.takeIf { it.startsWith("http") } ?: mainUrl
+
+        val bases = listOf(preferBase.trimEnd('/')) + fallbackBases
+        var parsed: HdRezkaCdnResponse? = null
+        run loop@{
+            bases.distinct().forEach { base ->
+                val endpoint = if (isMovie) "$base/ajax/get_cdn_movies/" else "$base/ajax/get_cdn_series/"
+                val bodyBuilder = FormBody.Builder()
+                    .add("id", itemId.toString())
+                    .add("translator_id", translatorId.toString())
+                    .add("is_camrip", "0")
+                    .add("is_ads", "0")
+                    .add("is_director", "0")
+                    .add("favs", "0")
+                    .add("action", action)
+                if (!isMovie) {
+                    bodyBuilder.add("season", seasonId.toString())
+                    bodyBuilder.add("episode", episodeId.toString())
+                }
+                val json = runCatching {
+                    app.post(
+                        endpoint,
+                        requestBody = bodyBuilder.build(),
+                        headers = baseHeaders(referer = refererUrl, origin = base) + mapOf(
+                            "X-Requested-With" to "XMLHttpRequest",
+                        )
+                    ).text
+                }.getOrNull()
+                if (json != null) {
+                    parsed = runCatching { parseJson<HdRezkaCdnResponse>(json) }.getOrNull()
+                    if (parsed?.url != null) return@loop
+                }
+            }
         }
 
-        val json = app.post(
-            endpoint,
-            requestBody = bodyBuilder.build(),
-            headers = baseHeaders(referer = refererUrl, origin = base) + mapOf(
-                "X-Requested-With" to "XMLHttpRequest",
-            )
-        ).text
-
-        val parsed = parseJson<HdRezkaCdnResponse>(json)
+        val parsedResponse = parsed ?: return false
         val rawUrl = parsed.url ?: return false
         val decoded = clearTrash(rawUrl, settings.trashCodes)
         val candidateList = if (decoded.isNotBlank()) decoded else rawUrl.replace("#h", "").replace("//_//", ",")
