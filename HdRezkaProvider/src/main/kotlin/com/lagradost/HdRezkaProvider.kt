@@ -71,6 +71,11 @@ class HdRezkaProvider : MainAPI() {
     @Volatile
     private var appliedRemoteMainUrl = false
 
+    private suspend fun ensureSettingsApplied(): OnlineSettings {
+        // Fetch settings and update mainUrl before building request URLs.
+        return getSettings()
+    }
+
     override val mainPage = mainPageOf(
         "/films/" to "Movies",
         "/series/" to "Series",
@@ -198,22 +203,28 @@ class HdRezkaProvider : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = if (request.data.endsWith("/")) "${mainUrl}${request.data}page/$page/" else "${mainUrl}${request.data}?page=$page"
-        val doc = app.get(url, headers = baseHeaders(referer = mainUrl, origin = mainUrl)).document
+        ensureSettingsApplied() // ensure mainUrl mirrors applied before constructing URL
+        val base = mainUrl.trimEnd('/')
+        val url = if (request.data.endsWith("/")) "$base${request.data}page/$page/" else "$base${request.data}?page=$page"
+        val doc = app.get(url, headers = baseHeaders(referer = base, origin = base)).document
         val items = doc.select(".b-content__inline_item").mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/search/?do=search&subaction=search&q=${query.trim()}"
-        val doc = app.get(url, headers = baseHeaders(referer = mainUrl, origin = mainUrl)).document
+        ensureSettingsApplied()
+        val base = mainUrl.trimEnd('/')
+        val url = "$base/search/?do=search&subaction=search&q=${query.trim()}"
+        val doc = app.get(url, headers = baseHeaders(referer = base, origin = base)).document
         return doc.select(".b-content__inline_item").mapNotNull { it.toSearchResult() }
     }
 
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun load(url: String): LoadResponse {
-        val doc = app.get(url, headers = baseHeaders(referer = url, origin = mainUrl)).document
+        ensureSettingsApplied()
+        val base = mainUrl.trimEnd('/')
+        val doc = app.get(url, headers = baseHeaders(referer = url, origin = base)).document
         val title = doc.selectFirst("h1")?.text()?.trim().orEmpty()
         val poster = doc.selectFirst("meta[property=og:image]")?.attr("content")
             ?: doc.selectFirst(".b-post__infopic img")?.let { img ->
