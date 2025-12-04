@@ -77,7 +77,8 @@ class HdRezkaProvider : MainAPI() {
         "https://hdrezka.ac",
         "https://rezka.ac",
         "https://rezka.cm",
-        "https://rezka.tv"
+        "https://rezka.tv",
+        "https://hdrezka-home.tv"
     )
 
     private fun normalizeUrl(url: String?): String? {
