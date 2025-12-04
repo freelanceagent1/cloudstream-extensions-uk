@@ -3,7 +3,7 @@
     "iconUrl": "https://www.google.com/s2/favicons?domain=hdrezka.ag&sz=%size%",
     "apiVersion": 1,
     "repositoryUrl": "https://github.com/freelanceagent1/cloudstream-extensions-uk",
-    "fileSize": 18370,
+    "fileSize": 18517,
     "status": 1,
     "language": "en",
     "authors": [
@@ -18,7 +18,7 @@
       "OVA",
       "AsianDrama"
     ],
-    "version": 6,
+    "version": 7,
     "internalName": "HdRezkaProvider",
     "description": "HDRezka source with movies, series, anime, cartoons, shows, and Korean dramas.",
     "url": "https://raw.githubusercontent.com/freelanceagent1/cloudstream-extensions-uk/master/builds/HdRezkaProvider.cs3",
