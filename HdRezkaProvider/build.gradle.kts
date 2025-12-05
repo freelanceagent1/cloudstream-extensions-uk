@@ -4,6 +4,7 @@ version = 21
 dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.jsoup)
 }
 
 cloudstream {

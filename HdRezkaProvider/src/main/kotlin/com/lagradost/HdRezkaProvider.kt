@@ -41,7 +41,7 @@ class HdRezkaProvider : MainAPI() {
         "stream.voidboost.cc",
     )
 
-    private data class RemoteSettingsDto(
+    internal data class RemoteSettingsDto(
         val code: String? = null,
         val default_useragent: String? = null,
         val mirror: String? = null,
@@ -53,7 +53,7 @@ class HdRezkaProvider : MainAPI() {
         val videoCdnDomain: String? = null,
     )
 
-    private data class OnlineSettings(
+    internal data class OnlineSettings(
         val appCode: String? = null,
         val userAgent: String,
         val trashCodes: Set<String>,
@@ -72,16 +72,17 @@ class HdRezkaProvider : MainAPI() {
     private var appliedRemoteMainUrl = false
 
     private val fallbackBases = listOf(
-        "https://hdrezka-home.tv",
-        "https://rezka.ag",
+        // English-first preference ordering
         "https://hdrezka.ag",
+        "https://rezka.ag",
+        "https://hdrezka-home.tv",
+        "https://hdrezka.ac",
         "https://rezka.ac",
         "https://rezka.tv",
-        "https://hdrezka.ac",
         "https://rezka.cm",
     )
 
-    private fun normalizeUrl(url: String?): String? {
+    internal fun normalizeUrl(url: String?): String? {
         if (url.isNullOrBlank()) return null
         val trimmed = url.trim()
         return when {
@@ -107,7 +108,7 @@ class HdRezkaProvider : MainAPI() {
         "/series/best/" to "Top Series",
     )
 
-    private fun generateFallbackTrashCodes(): Set<String> {
+    internal fun generateFallbackTrashCodes(): Set<String> {
         val trashList = listOf("@", "#", "!", "^", "$")
         val trashCodes = mutableSetOf<String>()
         for (a in trashList) {
@@ -161,6 +162,16 @@ class HdRezkaProvider : MainAPI() {
         return settings
     }
 
+    internal fun buildPreferredBases(dto: RemoteSettingsDto? = null): List<String> {
+        val remoteMirrors = listOfNotNull(dto?.mirror, dto?.mirror2)
+            .mapNotNull { normalizeUrl(it) }
+        val bases = mutableListOf<String>()
+        bases += remoteMirrors
+        bases += mainUrl.trimEnd('/')
+        bases += fallbackBases
+        return bases.mapNotNull { normalizeUrl(it) }.distinct()
+    }
+
     private suspend fun baseHeaders(referer: String? = null, origin: String? = null): Map<String, String> {
         val settings = getSettings()
         return buildMap {
@@ -182,7 +193,7 @@ class HdRezkaProvider : MainAPI() {
         return hosts.distinct()
     }
 
-    private fun expandCdnHosts(url: String, settings: OnlineSettings): List<String> {
+    internal fun expandCdnHosts(url: String, settings: OnlineSettings): List<String> {
         val uri = runCatching { URI(url) }.getOrNull() ?: return listOf(url)
         val currentHost = uri.host ?: return listOf(url)
         val isCdnHost =
@@ -193,6 +204,22 @@ class HdRezkaProvider : MainAPI() {
         return targets.distinct().mapNotNull { host ->
             runCatching { URI(uri.scheme, uri.userInfo, host, uri.port, uri.path, uri.query, uri.fragment).toString() }.getOrNull()
         }.distinct()
+    }
+
+    internal fun decodeStreamEntry(entry: String, trashCodes: Set<String>): String {
+        val unescaped = entry.replace("\\/", "/")
+        if (unescaped.startsWith("[")) return unescaped
+        val candidates = listOf(
+            unescaped.replace("\n", "").replace("\r", "").trim(),
+            trashCodes.fold(unescaped) { acc, code -> acc.replace(code, "") }.replace("\n", "").replace("\r", "").trim(),
+        )
+        for (candidate in candidates) {
+            val needPad = (4 - candidate.length % 4) % 4
+            val padded = candidate + "=".repeat(needPad)
+            val decoded = runCatching { java.util.Base64.getMimeDecoder().decode(padded).toString(Charsets.UTF_8) }.getOrNull()
+            if (decoded != null && decoded.startsWith("[")) return decoded
+        }
+        return entry
     }
 
     private fun Element.posterFromImg(): String? {
@@ -206,7 +233,7 @@ class HdRezkaProvider : MainAPI() {
         return null
     }
 
-    private fun Element.toSearchResult(): SearchResponse? {
+    internal fun Element.toSearchResult(): SearchResponse? {
         val link = selectFirst(".b-content__inline_item-link a") ?: return null
         val href = fixUrl(link.attr("href"))
         val title = link.text().trim()
@@ -224,8 +251,9 @@ class HdRezkaProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         ensureSettingsApplied() // ensure mainUrl mirrors applied before constructing URL
-        val bases = listOf(mainUrl.trimEnd('/')) + fallbackBases
-        for (base in bases.distinct()) {
+        val settingsDto = runCatching { parseJson<RemoteSettingsDto>(app.get(remoteSettingsUrl).text) }.getOrNull()
+        val bases = buildPreferredBases(settingsDto)
+        for (base in bases) {
             val url = if (request.data.endsWith("/")) "$base${request.data}page/$page/" else "$base${request.data}?page=$page"
             val doc = runCatching { app.get(url, headers = baseHeaders(referer = base, origin = base)).document }.getOrNull()
             val items = doc?.select(".b-content__inline_item")?.mapNotNull { it.toSearchResult() } ?: emptyList()
@@ -237,8 +265,9 @@ class HdRezkaProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         ensureSettingsApplied()
-        val bases = listOf(mainUrl.trimEnd('/')) + fallbackBases
-        for (base in bases.distinct()) {
+        val settingsDto = runCatching { parseJson<RemoteSettingsDto>(app.get(remoteSettingsUrl).text) }.getOrNull()
+        val bases = buildPreferredBases(settingsDto)
+        for (base in bases) {
             val url = "$base/search/?do=search&subaction=search&q=${query.trim()}"
             val doc = runCatching { app.get(url, headers = baseHeaders(referer = base, origin = base)).document }.getOrNull()
             val results = doc?.select(".b-content__inline_item")?.mapNotNull { it.toSearchResult() } ?: emptyList()
@@ -338,7 +367,7 @@ class HdRezkaProvider : MainAPI() {
         }
     }
 
-    private fun clearTrash(data: String, trashCodes: Set<String>): String {
+    internal fun clearTrash(data: String, trashCodes: Set<String>): String {
         val combined = data.replace("#h", "").split("//_//").joinToString("")
         val cleaned = trashCodes.fold(combined) { acc, code -> acc.replace(code, "") }
             .replace("\n", "")
@@ -366,8 +395,9 @@ class HdRezkaProvider : MainAPI() {
             val entries = decoded.split(',').map { it.trim() }.filter { it.isNotBlank() }
             if (entries.isEmpty()) return false
             entries.forEach { entry ->
-                val quality = Regex("\\[(\\d+)p").find(entry)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                val urlPart = entry.substringAfter(']').trim()
+                val normalizedEntry = decodeStreamEntry(entry, settings.trashCodes)
+                val quality = Regex("\\[(\\d+)p").find(normalizedEntry)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                val urlPart = normalizedEntry.substringAfter(']').trim()
                 val variants = urlPart.split(" or ").map { it.trim() }
                 variants.forEach { variant ->
                     val isHls = variant.contains(":hls:")
@@ -432,12 +462,14 @@ class HdRezkaProvider : MainAPI() {
         val refererUrl = parts.getOrNull(5) ?: mainUrl
 
         val action = if (isMovie) "get_movie" else "get_stream"
-        val preferBase = runCatching {
+        val preferBaseFromData = runCatching {
             val uri = URI(refererUrl)
             "${uri.scheme}://${uri.host}"
         }.getOrNull()?.takeIf { it.startsWith("http") } ?: mainUrl
 
-        val bases = listOf(preferBase.trimEnd('/')) + fallbackBases
+        val settingsDto = runCatching { parseJson<RemoteSettingsDto>(app.get(remoteSettingsUrl).text) }.getOrNull()
+        val bases = buildPreferredBases(settingsDto).ifEmpty { listOf(mainUrl.trimEnd('/')) } +
+                listOfNotNull(preferBaseFromData?.trimEnd('/'))
         var parsed: HdRezkaCdnResponse? = null
         run loop@{
             bases.distinct().forEach { base ->
@@ -477,8 +509,9 @@ class HdRezkaProvider : MainAPI() {
         val entries = candidateList.split(',').map { it.trim() }.filter { it.isNotBlank() }
         if (entries.isEmpty()) return false
         for (entry in entries) {
-            val quality = Regex("\\[(\\d+)p").find(entry)?.groupValues?.getOrNull(1)?.toIntOrNull()
-            val urlPart = entry.substringAfter(']').trim()
+            val normalizedEntry = decodeStreamEntry(entry, settings.trashCodes)
+            val quality = Regex("\\[(\\d+)p").find(normalizedEntry)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            val urlPart = normalizedEntry.substringAfter(']').trim()
             val variants = urlPart.split(" or ").map { it.trim() }
             variants.forEach { variant ->
                 val isHls = variant.contains(":hls:")
@@ -540,7 +573,7 @@ class HdRezkaProvider : MainAPI() {
     }
 }
 
-private data class HdRezkaCdnResponse(
+internal data class HdRezkaCdnResponse(
     val success: Boolean?,
     val message: String?,
     val premium_content: Int?,
